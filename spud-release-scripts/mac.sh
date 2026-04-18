@@ -1,11 +1,11 @@
 # Do not run this unless you know what you're doing.
-# Don't run this when Void is open, or Mac will confuse the two versions (run in terminal or VS Code). 
+# Don't run this when Spud is open, or macOS can confuse the two versions (run in Terminal or another editor).
 
 set -e
 
 
-# To fix /Volumes/Void errors, DO NOT RUN IN VOID!!!
-# To fix permission errors, sudo chmod -r +rwx ~/Desktop/void
+# Avoid running from inside the mounted Spud volume (create-dmg /Volumes/... issues).
+# To fix permission errors: adjust permissions on your working Desktop folder as needed.
 # Run in sudo if have errors
 
 

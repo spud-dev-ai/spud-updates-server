@@ -11,8 +11,8 @@ ARCH=$2
 # Required variables (store these values in mac-env.sh and copy them over to run this script):
 # ORIGINAL_DOTAPP_DIR="${HOME}/Desktop/VSCode-darwin-${ARCH}" # location of original (nothing is modified in this dir, just copied away from it)
 # ORIGINAL_REH_DIR="${HOME}/Desktop/vscode-reh-darwin-${ARCH}"
-# WORKING_DIR="${HOME}/Desktop/VoidSign-${ARCH}" # temp dir for all the work here
-# VOID_DIR="${HOME}/Desktop/void"
+# WORKING_DIR="${HOME}/Desktop/SpudSign-${ARCH}" # temp dir for all the work here
+# SPUD_IDE_DIR="${HOME}/Documents/blue/spud.ide/spud/ide"   # path to Spud IDE repo (gulp / sign.js)
 # P12_FILE="${HOME}/Desktop/sign/cert.p12"
 # P12_PASSWORD="..."
 # APPLE_ID="..."
@@ -25,8 +25,8 @@ ARCH=$2
 
 
 # Check if all required variables are set
-if [ -z "$ORIGINAL_DOTAPP_DIR" ] || [ -z "$WORKING_DIR" ] || [ -z "$P12_FILE" ] || [ -z "$P12_PASSWORD" ] || [ -z "$APPLE_ID" ] || [ -z "$TEAM_ID" ] || [ -z "$APP_PASSWORD" ] || [ -z "$CODESIGN_IDENTITY" ]; then
-    echo "Error: Make sure to set all variables."
+if [ -z "$ORIGINAL_DOTAPP_DIR" ] || [ -z "$WORKING_DIR" ] || [ -z "$P12_FILE" ] || [ -z "$P12_PASSWORD" ] || [ -z "$APPLE_ID" ] || [ -z "$TEAM_ID" ] || [ -z "$APP_PASSWORD" ] || [ -z "$CODESIGN_IDENTITY" ] || [ -z "$SPUD_IDE_DIR" ]; then
+    echo "Error: Make sure to set all variables (including SPUD_IDE_DIR)."
     exit 1
 fi
 
@@ -37,10 +37,10 @@ KEYCHAIN="${KEYCHAIN_DIR}/buildagent.keychain"
 
 SIGN_DIR="${WORKING_DIR}/2_Signed"
 SIGNED_DOTAPP_DIR="${SIGN_DIR}/VSCode-darwin-${ARCH}"
-SIGNED_DOTAPP="${SIGN_DIR}/VSCode-darwin-${ARCH}/Void.app"
+SIGNED_DOTAPP="${SIGN_DIR}/VSCode-darwin-${ARCH}/Spud.app"
 
 SIGNED_DMG_DIR="${SIGN_DIR}/VSCode-darwin-${ARCH}"
-SIGNED_DMG="${SIGN_DIR}/VSCode-darwin-${ARCH}/Void-Installer-darwin-${ARCH}.dmg"
+SIGNED_DMG="${SIGN_DIR}/VSCode-darwin-${ARCH}/Spud-Installer-darwin-${ARCH}.dmg"
 
 
 
@@ -71,7 +71,7 @@ sign() {
 
 
     echo "-------------------- 2a. Sign --------------------"
-    cd "${VOID_DIR}/build/darwin"
+    cd "${SPUD_IDE_DIR}/build/darwin"
 
     # used in sign.js
     export AGENT_TEMPDIRECTORY=$KEYCHAIN_DIR
@@ -81,7 +81,7 @@ sign() {
     codesign --verify --verbose=4 "${SIGNED_DOTAPP}"
 
     echo "-------------------- 2b. Make into dmg --------------------"
-    npx create-dmg --volname "Void Installer" "${SIGNED_DOTAPP}" "${SIGNED_DMG_DIR}"
+    npx create-dmg --volname "Spud Installer" "${SIGNED_DOTAPP}" "${SIGNED_DMG_DIR}"
     # there are two create-dmgs https://github.com/create-dmg/create-dmg https://github.com/sindresorhus/create-dmg the latter one is on npm and works better
     GENERATED_DMG=$(ls "${SIGNED_DMG_DIR}"/*.dmg) # figure out the full path of the generated file because create-dmg is stupid
     if [[ -z "$GENERATED_DMG" ]]; then
@@ -99,26 +99,25 @@ sign() {
 # notarize DMG
 notarize(){
 
-    KEYCHAIN_PROFILE_NAME="Void" # this doesnt seem to do anything but is required
+    KEYCHAIN_PROFILE_NAME="Spud" # this doesnt seem to do anything but is required
 
     # echo "-------------------- 4. Notarize --------------------"
     # echo "Past history:"
     # xcrun notarytool history --keychain-profile "${KEYCHAIN_PROFILE_NAME}" --keychain "${KEYCHAIN}"
-    echo "Void: Setting credentials..."
+    echo "Spud: Setting credentials..."
     xcrun notarytool store-credentials "${KEYCHAIN_PROFILE_NAME}" \
     --apple-id "${APPLE_ID}" \
     --team-id "${TEAM_ID}" \
     --password "${APP_PASSWORD}" \
     --keychain "${KEYCHAIN}"
 
-    echo "Void: Submitting..."
+    echo "Spud: Submitting..."
     xcrun notarytool submit "${SIGNED_DMG}" \
     --keychain-profile "${KEYCHAIN_PROFILE_NAME}" \
     --keychain "${KEYCHAIN}" \
     --wait
 
     echo "Done! Stapling..."
-    # finds notarized ticket that was made and staples it to Void.app
     xcrun stapler staple "${SIGNED_DMG}"
 
     # echo "-------------------- 6. Verify --------------------"
@@ -131,10 +130,10 @@ rawapp() {
 	cd "${SIGNED_DOTAPP_DIR}"
 	echo "Zipping rawapp here..."
 
-	VOIDAPP=$(basename $SIGNED_DOTAPP)
-    ZIPNAME="Void-RawApp-darwin-${ARCH}.zip"
+	SPUDAPP=$(basename $SIGNED_DOTAPP)
+    ZIPNAME="Spud-RawApp-darwin-${ARCH}.zip"
     # ZIPPEDAPP="${SIGNED_DOTAPP_DIR}/${ZIPNAME}"
-    ditto -c -k --sequesterRsrc --keepParent "${VOIDAPP}" "${ZIPNAME}"
+    ditto -c -k --sequesterRsrc --keepParent "${SPUDAPP}" "${ZIPNAME}"
 
 	echo "Done!"
 }
@@ -143,11 +142,11 @@ rawapp() {
 hashrawapp() {
     cd "${SIGNED_DOTAPP_DIR}"
 
-    SHA1=$(shasum -a 1 "${SIGNED_DOTAPP_DIR}/Void-RawApp-darwin-${ARCH}.zip" | cut -d' ' -f1)
-    SHA256=$(shasum -a 256 "${SIGNED_DOTAPP_DIR}/Void-RawApp-darwin-${ARCH}.zip" | cut -d' ' -f1)
+    SHA1=$(shasum -a 1 "${SIGNED_DOTAPP_DIR}/Spud-RawApp-darwin-${ARCH}.zip" | cut -d' ' -f1)
+    SHA256=$(shasum -a 256 "${SIGNED_DOTAPP_DIR}/Spud-RawApp-darwin-${ARCH}.zip" | cut -d' ' -f1)
     TIMESTAMP=$(date +%s)
 
-    cat > "Void-UpdJSON-darwin-${ARCH}.json" << EOF
+    cat > "Spud-UpdJSON-darwin-${ARCH}.json" << EOF
 {
     "sha256hash": "${SHA256}",
     "hash": "${SHA1}",
@@ -176,7 +175,7 @@ esac
 # Check the first argument
 case "$1" in
     build)
-        cd "${VOID_DIR}"
+        cd "${SPUD_IDE_DIR}"
         npm run buildreact
         npm run gulp "vscode-darwin-${ARCH}-min"
         ;;
@@ -194,11 +193,11 @@ case "$1" in
 		;;
 
  buildreh)
-        cd "${VOID_DIR}"
+        cd "${SPUD_IDE_DIR}"
         npm run gulp "vscode-reh-darwin-${ARCH}-min"
         ;;
    packagereh)
-        tar -czf "${SIGNED_DOTAPP_DIR}/void-server-darwin-${ARCH}.tar.gz" -C "$(dirname "$ORIGINAL_REH_DIR")" "$(basename "$ORIGINAL_REH_DIR")"
+        tar -czf "${SIGNED_DOTAPP_DIR}/spud-server-darwin-${ARCH}.tar.gz" -C "$(dirname "$ORIGINAL_REH_DIR")" "$(basename "$ORIGINAL_REH_DIR")"
         ;;
     *)
         echo $USAGE
