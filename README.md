@@ -6,6 +6,17 @@ Deploy target example: `https://updates.spud.dev` (set `updateUrl` in `ide/produ
 
 Entry point: [`app/[...route]/route.ts`](./app/[...route]/route.ts)
 
+## Cloud deployment (Vercel)
+
+1. Import [spud-dev-ai/spud-updates-server](https://github.com/spud-dev-ai/spud-updates-server) in Vercel (Next.js is auto-detected; [`vercel.json`](./vercel.json) pins a default region).
+2. **Production environment variables** — set the `SPUD_*` values from the table below (at minimum `SPUD_LATEST_COMMIT` after each desktop release; add hashes when you want Electron to download a zip).
+3. **Custom domain** — add `updates.spud.dev`, then at your DNS provider create a **CNAME** to `cname.vercel-dns.com` (or the target Vercel shows). Wait for TLS to provision.
+4. **Smoke test** — `GET https://updates.spud.dev/api/health` should return `{"ok":true,...}`.
+
+Staging: set `SPUD_UPDATE_URL` in **spud-builder** (or ship a staging IDE build) to a Vercel preview URL like `https://spud-updates-server-xxx.vercel.app` so the app hits preview before promoting DNS.
+
+Local env template: copy [`.env.example`](./.env.example) to `.env.local` for `vercel dev` / `next dev`.
+
 ## Endpoints
 
 ### 1. VS Code–style feed (Electron `autoUpdater`)
