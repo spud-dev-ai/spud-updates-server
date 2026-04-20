@@ -3,8 +3,9 @@ import type { NextRequest } from 'next/server'
 
 /**
  * CORS for update endpoints (desktop app / tooling may probe from various contexts).
+ * Next 16 renamed the `middleware` file convention to `proxy` — this is the same CORS layer.
  */
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
 	if (!request.nextUrl.pathname.startsWith('/api')) {
 		return NextResponse.next()
 	}

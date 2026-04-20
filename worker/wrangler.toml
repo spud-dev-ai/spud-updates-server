@@ -1,0 +1,27 @@
+name = "spud-updates-server"
+main = "src/index.ts"
+compatibility_date = "2026-04-01"
+# Keeps Workers Node.js runtime APIs available if we later need them.
+compatibility_flags = ["nodejs_compat"]
+
+# Non-secret config. Override per-environment with `wrangler secret put` or `[env.*.vars]`.
+[vars]
+SPUD_GITHUB_REPO = "spud-dev-ai/spud-ide"
+SPUD_DOWNLOAD_PAGE = "https://spud.dev/download"
+SPUD_RELEASE_TAG = "v0.1.0"
+SPUD_PRODUCT_VERSION = "0.1.0"
+# Populate these once an IDE release is cut:
+# SPUD_LATEST_COMMIT   — full SHA baked into product.json at build time
+# SPUD_UPDATE_SHA256   — required + SHA1 for /api/update to return 200 JSON
+# SPUD_UPDATE_SHA1
+# SPUD_UPDATE_ZIP_URL  — optional; defaults to github.com/${SPUD_GITHUB_REPO}/releases/download/${SPUD_RELEASE_TAG}/Spud-RawApp-${platform}.zip
+# SPUD_UPDATE_TIMESTAMP
+
+# Custom domain — routes updates.spud.dev to this worker.
+# Requires the spud.dev zone to be on the same Cloudflare account (it is).
+[[routes]]
+pattern = "updates.spud.dev"
+custom_domain = true
+
+[observability]
+enabled = true

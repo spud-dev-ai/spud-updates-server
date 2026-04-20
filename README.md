@@ -1,21 +1,51 @@
 # spud-updates-server
 
-Small Next.js app Spud pings to check for updates (Electron feed) and, optionally, to show a manual reinstall notice. Forked from [voideditor/void-updates-server](https://github.com/voideditor/void-updates-server).
+Small service Spud pings to check for updates (Electron feed) and, optionally, to show a manual reinstall notice. Originally forked from [voideditor/void-updates-server](https://github.com/voideditor/void-updates-server).
 
-Deploy target example: `https://updates.spud.dev` (set `updateUrl` in `ide/product.json` when you ship auto-updates).
+Deploy target: **Cloudflare Worker** at `https://updates.spud.dev` (set `updateUrl` in `ide/product.json` to this host).
 
-Entry point: [`app/[...route]/route.ts`](./app/[...route]/route.ts)
+Entry point (live): [`worker/src/index.ts`](./worker/src/index.ts) — Hono app on Cloudflare Workers.
 
-## Cloud deployment (Vercel)
+> The original Next.js app under [`app/`](./app/) + [`vercel.json`](./vercel.json) is kept as a reference implementation. It is **not** the deployed server.
 
-1. Import [spud-dev-ai/spud-updates-server](https://github.com/spud-dev-ai/spud-updates-server) in Vercel (Next.js is auto-detected; [`vercel.json`](./vercel.json) pins a default region).
-2. **Production environment variables** — set the `SPUD_*` values from the table below (at minimum `SPUD_LATEST_COMMIT` after each desktop release; add hashes when you want Electron to download a zip).
-3. **Custom domain** — add `updates.spud.dev`, then at your DNS provider create a **CNAME** to `cname.vercel-dns.com` (or the target Vercel shows). Wait for TLS to provision.
-4. **Smoke test** — `GET https://updates.spud.dev/api/health` should return `{"ok":true,...}`.
+## Cloud deployment (Cloudflare Workers)
 
-Staging: set `SPUD_UPDATE_URL` in **spud-builder** (or ship a staging IDE build) to a Vercel preview URL like `https://spud-updates-server-xxx.vercel.app` so the app hits preview before promoting DNS.
+From [`worker/`](./worker/):
 
-Local env template: copy [`.env.example`](./.env.example) to `.env.local` for `vercel dev` / `next dev`.
+```bash
+cd worker
+npm install
+npx wrangler deploy
+```
+
+`worker/wrangler.toml` pins:
+
+- `name = "spud-updates-server"`
+- Route `updates.spud.dev` as a **custom domain** (auto-creates the DNS record in the `spud.dev` zone on first deploy)
+- `[vars]` with non-secret defaults (`SPUD_GITHUB_REPO`, `SPUD_DOWNLOAD_PAGE`, `SPUD_RELEASE_TAG`, `SPUD_PRODUCT_VERSION`)
+
+Set per-release secrets (after each IDE build):
+
+```bash
+cd worker
+npx wrangler secret put SPUD_LATEST_COMMIT     # full git SHA of the shipped build
+npx wrangler secret put SPUD_UPDATE_SHA256
+npx wrangler secret put SPUD_UPDATE_SHA1
+# optional overrides:
+npx wrangler secret put SPUD_UPDATE_ZIP_URL
+npx wrangler secret put SPUD_UPDATE_TIMESTAMP
+```
+
+**Smoke test** once deployed:
+
+```bash
+curl -s https://updates.spud.dev/api/health
+# → {"ok":true,"service":"spud-updates-server","timestamp":"..."}
+curl -i https://updates.spud.dev/api/update/darwin-arm64/stable/abc123
+# → HTTP/2 204 while SPUD_LATEST_COMMIT is unset (correct safe default)
+```
+
+Local development: `cd worker && npx wrangler dev` (runs the Worker on `localhost:8787` against the `miniflare` emulator). Copy values from [`.env.example`](./.env.example) into `worker/.dev.vars` to test with non-default env.
 
 ## Endpoints
 
@@ -67,15 +97,21 @@ Set `SPUD_IDE_DIR` to your local `spud/ide` checkout (see `mac-sign.sh`).
 ## New release checklist
 
 1. Build and sign desktop artifacts; upload `Spud-RawApp-*.zip`, `hash` metadata, and DMG to [spud-dev-ai/spud-ide releases](https://github.com/spud-dev-ai/spud-ide/releases).
-2. Set `SPUD_LATEST_COMMIT`, `SPUD_RELEASE_TAG`, and hash env vars on the host running this server (e.g. Vercel).
+2. `wrangler secret put SPUD_LATEST_COMMIT`, `SPUD_UPDATE_SHA256`, `SPUD_UPDATE_SHA1` from [`worker/`](./worker/). Update `SPUD_RELEASE_TAG` in `worker/wrangler.toml` if the tag changed.
 3. Align `ide/product.json` `commit` / version with that release for clients that auto-update.
 
 ## Develop
 
 ```bash
+# live Worker
+cd spud-updates-server/worker
+npm install
+npx wrangler dev           # http://localhost:8787
+
+# Next.js reference (not deployed)
 cd spud-updates-server
 npm install
-npm run dev
+npm run dev                # http://localhost:3000
 ```
 
 ## License
