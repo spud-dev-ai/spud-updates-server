@@ -21,11 +21,38 @@ type Env = {
 	SPUD_RELEASE_TAG?: string
 	SPUD_GITHUB_REPO?: string
 	SPUD_DOWNLOAD_PAGE?: string
+	/** Default zip URL (if no per-platform override is set). */
 	SPUD_UPDATE_ZIP_URL?: string
+	/** Default hashes (used as fallback when no per-platform override is set). */
 	SPUD_UPDATE_SHA256?: string
 	SPUD_UPDATE_SHA1?: string
 	SPUD_UPDATE_TIMESTAMP?: string
 	SPUD_PRODUCT_VERSION?: string
+	/**
+	 * Per-platform overrides. Key suffix is the validated platform string with
+	 * `-` swapped for `_` (e.g. `darwin-arm64` → `SPUD_UPDATE_SHA256_DARWIN_ARM64`).
+	 * Populated by `scripts/publish-release.sh` after every GitHub release.
+	 * Unknown/unset values fall back to the plain `SPUD_UPDATE_*` secrets above.
+	 */
+	[key: `SPUD_UPDATE_SHA256_${string}`]: string | undefined
+	[key: `SPUD_UPDATE_SHA1_${string}`]: string | undefined
+	[key: `SPUD_UPDATE_ZIP_URL_${string}`]: string | undefined
+}
+
+/** `darwin-arm64` → `DARWIN_ARM64` — matches the secret suffix convention. */
+function platformKey(p: string): string {
+	return p.replace(/-/g, '_').toUpperCase()
+}
+
+function pickPlatformSecret(
+	env: Env,
+	base: 'SPUD_UPDATE_SHA256' | 'SPUD_UPDATE_SHA1' | 'SPUD_UPDATE_ZIP_URL',
+	platform: string,
+): string | undefined {
+	const perPlatform = env[`${base}_${platformKey(platform)}` as keyof Env] as
+		| string
+		| undefined
+	return perPlatform?.trim() || env[base]?.trim() || undefined
 }
 
 // strict: false — trailing slashes are equivalent, so /api/v0 and /api/v0/ both hit
@@ -95,17 +122,17 @@ app.get('/api/update/:platform/:quality/:commit', (c) => {
 		return new Response(null, { status: 204 })
 	}
 
-	const sha256 = env.SPUD_UPDATE_SHA256
-	const sha1 = env.SPUD_UPDATE_SHA1
+	const sha256 = pickPlatformSecret(env, 'SPUD_UPDATE_SHA256', platform)
+	const sha1 = pickPlatformSecret(env, 'SPUD_UPDATE_SHA1', platform)
 	if (!sha256 || !sha1) {
-		// Hashes not published yet — avoid a broken auto-update.
+		// Hashes not published yet for this platform — avoid a broken auto-update.
 		return new Response(null, { status: 204 })
 	}
 
 	const tag = env.SPUD_RELEASE_TAG ?? 'v0.1.0'
 	const repo = env.SPUD_GITHUB_REPO ?? 'spud-dev-ai/spud-ide'
 	const zipUrl =
-		env.SPUD_UPDATE_ZIP_URL ??
+		pickPlatformSecret(env, 'SPUD_UPDATE_ZIP_URL', platform) ??
 		`https://github.com/${repo}/releases/download/${tag}/Spud-RawApp-${platform}.zip`
 	const timestamp = Number(env.SPUD_UPDATE_TIMESTAMP ?? String(Math.floor(Date.now() / 1000)))
 	const productVersion = env.SPUD_PRODUCT_VERSION ?? '0.1.0'

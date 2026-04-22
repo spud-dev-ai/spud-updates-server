@@ -1,0 +1,82 @@
+name: publish-release
+
+# Pushes per-release secrets (SPUD_LATEST_COMMIT, SHA256, SHA1, …) to the
+# `spud-updates-server` Cloudflare Worker after a new spud-ide release is cut.
+#
+# Two entry points:
+#   1. `workflow_dispatch` — manual trigger from the Actions tab, takes a tag.
+#   2. `repository_dispatch` — invoked by the spud-ide release workflow once its
+#      `Spud-RawApp-*.zip` assets finish uploading (event_type: `ide-release`).
+#
+# Repo secrets required:
+#   CLOUDFLARE_API_TOKEN  (scope: "Workers Scripts — Edit" for this account)
+#   CLOUDFLARE_ACCOUNT_ID
+#   RELEASE_READ_GITHUB_TOKEN  (optional; falls back to the default GITHUB_TOKEN.
+#                               Needed if the ide repo is private.)
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'spud-ide release tag (e.g. v0.1.1)'
+        required: true
+      repo:
+        description: 'Source repo (defaults to spud-dev-ai/spud-ide)'
+        required: false
+        default: 'spud-dev-ai/spud-ide'
+      dry_run:
+        description: 'Print secrets without writing them'
+        required: false
+        default: 'false'
+        type: boolean
+  repository_dispatch:
+    types: [ide-release]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GITHUB_REPO: ${{ github.event.inputs.repo || github.event.client_payload.repo || 'spud-dev-ai/spud-ide' }}
+      RELEASE_TAG: ${{ github.event.inputs.tag || github.event.client_payload.tag }}
+      DRY_RUN: ${{ github.event.inputs.dry_run == 'true' && '1' || '0' }}
+      GH_TOKEN: ${{ secrets.RELEASE_READ_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sanity-check tag
+        run: |
+          if [[ -z "$RELEASE_TAG" ]]; then
+            echo "::error::Missing tag (provide via workflow_dispatch or repository_dispatch client_payload.tag)"
+            exit 1
+          fi
+          echo "Publishing secrets for $GITHUB_REPO@$RELEASE_TAG (dry_run=$DRY_RUN)"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: worker/package-lock.json
+
+      - name: Install worker dependencies (pulls wrangler)
+        working-directory: worker
+        run: npm ci
+
+      - name: Install jq (pre-installed on ubuntu-latest, smoke-check)
+        run: jq --version
+
+      - name: Run publish-release.sh
+        run: ./scripts/publish-release.sh "$RELEASE_TAG" $( [[ "$DRY_RUN" == "1" ]] && echo "--dry-run" )
+        env:
+          GITHUB_REPO: ${{ env.GITHUB_REPO }}
+          GH_TOKEN: ${{ env.GH_TOKEN }}
+
+      - name: Smoke test /api/health
+        if: ${{ env.DRY_RUN != '1' }}
+        run: |
+          curl -fsS https://updates.spud.dev/api/health | jq .
